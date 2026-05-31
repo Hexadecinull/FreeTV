@@ -17,7 +17,7 @@
         <!-- Cast SDK options provider -->
         <meta-data
             android:name="com.google.android.gms.cast.framework.OPTIONS_PROVIDER_CLASS_NAME"
-            android:value="com.phstudio.freetv.player.CastOptionsProvider" />
+            android:value="io.github.ssmg4.freetv.player.CastOptionsProvider" />
 
         <activity
             android:name=".MainActivity"

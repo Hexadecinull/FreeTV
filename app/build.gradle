@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace 'com.phstudio.freetv'
+    namespace 'io.github.ssmg4.freetv'
     compileSdk 35
 
     defaultConfig {
-        applicationId "com.phstudio.freetv"
+        applicationId "io.github.ssmg4.freetv"
         minSdk 21
         targetSdk 35
         versionCode 7
