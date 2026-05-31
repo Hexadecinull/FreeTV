@@ -1,36 +1,24 @@
 package com.phstudio.freetv.ui
 
 import android.content.Context
-import android.graphics.Bitmap
-import android.graphics.drawable.BitmapDrawable
-import android.graphics.drawable.Drawable
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.ImageView
 import androidx.recyclerview.widget.RecyclerView
+import coil.load
 import com.phstudio.freetv.R
-import com.squareup.picasso.Picasso
 
 internal class ItemAdapter2(
     private val context: Context,
     private var itemList: ArrayList<Triple<String, String, String>>,
     private val listener: OnItemClickListener,
     private val longClickListener: OnItemLongClickListener
-) :
-    RecyclerView.Adapter<ItemAdapter2.MyViewHolder>() {
-    private fun splitList(newsList: ArrayList<Triple<String, String, String>>): Triple<ArrayList<String>, ArrayList<String>, ArrayList<String>> {
-        val stringList1 = ArrayList<String>()
-        val intList = ArrayList<String>()
-        val stringList2 = ArrayList<String>()
+) : RecyclerView.Adapter<ItemAdapter2.MyViewHolder>() {
 
-        for (pair in newsList) {
-            stringList1.add(pair.first)
-            intList.add(pair.second)
-            stringList2.add(pair.third)
-        }
-        return Triple(stringList1, intList, stringList2)
-    }
+    /** Exposed so LinkActivity can check the current query during addItems() */
+    var currentQuery: String = ""
 
     interface OnItemClickListener {
         fun onItemClick(position: Int)
@@ -40,73 +28,46 @@ internal class ItemAdapter2(
         fun onItemLongClick(position: Int): Boolean
     }
 
-    internal inner class MyViewHolder(view: View) : RecyclerView.ViewHolder(view) {
-        var btItem: Button = view.findViewById(R.id.btItem)
+    inner class MyViewHolder(view: View) : RecyclerView.ViewHolder(view) {
+        val btItem: Button = view.findViewById(R.id.btItem)
 
         init {
-            btItem.setOnClickListener {
-                listener.onItemClick(adapterPosition)
-            }
-        }
-
-        init {
-            btItem.setOnLongClickListener {
-                longClickListener.onItemLongClick(position)
-                true
-            }
+            btItem.setOnClickListener { listener.onItemClick(adapterPosition) }
+            btItem.setOnLongClickListener { longClickListener.onItemLongClick(adapterPosition) }
+            itemView.setOnClickListener { listener.onItemClick(adapterPosition) }
+            itemView.setOnLongClickListener { longClickListener.onItemLongClick(adapterPosition) }
         }
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): MyViewHolder {
-        val itemView = LayoutInflater.from(parent.context)
-            .inflate(R.layout.item_button2, parent, false)
-        return MyViewHolder(itemView)
+        val view = LayoutInflater.from(parent.context).inflate(R.layout.item_button2, parent, false)
+        return MyViewHolder(view)
     }
 
     override fun onBindViewHolder(holder: MyViewHolder, position: Int) {
-        holder.itemView.setOnClickListener {
-            listener.onItemClick(position)
-        }
-
-        holder.itemView.setOnLongClickListener {
-            longClickListener.onItemLongClick(position)
-        }
-        val (stringList1, intList, _) = splitList(itemList)
-
-        val text = stringList1[position]
-        val icon = intList[position]
-        holder.btItem.text = text
+        val (name, logoUrl, _) = itemList[position]
+        holder.btItem.text = name
         holder.btItem.isFocusable = true
         holder.btItem.isClickable = true
 
-        loadInto(icon, holder.btItem)
-    }
-    private fun loadInto(url: String, button: Button) {
-        try {
-            Picasso.get().load(url)
-                .resize(200, 200)
-                .centerInside()
-                .into(object : com.squareup.picasso.Target {
-                    override fun onBitmapLoaded(bitmap: Bitmap?, from: Picasso.LoadedFrom?) {
-                        bitmap?.let {
-                            val drawable = BitmapDrawable(context.resources, it)
-                            button.setCompoundDrawablesWithIntrinsicBounds(drawable, null, null, null)
-                        }
-                    }
-
-                    override fun onBitmapFailed(e: Exception?, errorDrawable: Drawable?) {
-                        // Handle failed loading here
-                    }
-
-                    override fun onPrepareLoad(placeHolderDrawable: Drawable?) {
-                        // Handle loading progress here
-                    }
-                })
-        } catch (e: Exception) {
-            e.printStackTrace()
+        // Load logo with Coil — replaces Picasso boilerplate
+        if (logoUrl.isNotBlank()) {
+            holder.btItem.setCompoundDrawablesWithIntrinsicBounds(null, null, null, null)
+            val iv = ImageView(context).apply { maxWidth = 80; maxHeight = 80 }
+            iv.load(logoUrl) {
+                allowHardware(false)
+                listener(
+                    onSuccess = { _, result ->
+                        val d = result.drawable
+                        holder.btItem.setCompoundDrawablesRelativeWithIntrinsicBounds(d, null, null, null)
+                    },
+                    onError = { _, _ -> }
+                )
+            }
+        } else {
+            holder.btItem.setCompoundDrawablesWithIntrinsicBounds(null, null, null, null)
         }
     }
-    override fun getItemCount(): Int {
-        return itemList.size
-    }
+
+    override fun getItemCount(): Int = itemList.size
 }

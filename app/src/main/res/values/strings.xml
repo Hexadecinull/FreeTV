@@ -2,10 +2,10 @@
     <!--Developer & App info-->
     <string name="app_name" translatable="false">Free TV</string>
     <string name="developer" translatable="false">PH studio</string>
-    <string name="app_version" translatable="false">1.5</string>
+    <string name="app_version" translatable="false">1.6</string>
     <string name="fav_num" translatable="false">0</string>
     <string name="countries_num" translatable="false">80</string>
-    <string name="streams_num" translatable="false">42.3K</string>
+    <string name="streams_num" translatable="false">50K+</string>
 
     <!--MainActivity-->
     <string name="really">Really?</string>
@@ -383,4 +383,7 @@
     <string name="yucatec_maya">Yucatec Maya</string>
     <string name="yue_chinese">Yue Chinese</string>
     <string name="search_language">Search language…</string>
+    <string name="cast_button_title">Cast</string>
+    <string name="import_m3u_url">Import M3U from URL</string>
+    <string name="indonesia">Indonesia</string>
 </resources>

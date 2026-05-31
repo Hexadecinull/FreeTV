@@ -5,10 +5,7 @@
 
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
-        tools:ignore="ScopedStorage" />
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
-        tools:ignore="ScopedStorage" />
+    <!-- Storage permissions removed — using SAF (Storage Access Framework) instead -->
 
     <application
         android:allowBackup="true"
@@ -17,6 +14,12 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.FreeTV">
+
+        <!-- Cast SDK options provider -->
+        <meta-data
+            android:name="com.google.android.gms.cast.framework.OPTIONS_PROVIDER_CLASS_NAME"
+            android:value="com.phstudio.freetv.player.CastOptionsProvider" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true">
@@ -34,7 +37,7 @@
         <activity android:name=".ui.RegionsActivity" />
 
         <activity android:name=".player.PlayerActivity"
-            android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|screenLayout|keyboardHidden"
+            android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|keyboardHidden"
             android:resizeableActivity="true"
             android:supportsPictureInPicture="true"
             android:exported="true"

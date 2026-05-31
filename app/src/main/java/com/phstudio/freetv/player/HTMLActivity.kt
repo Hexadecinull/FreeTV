@@ -9,33 +9,44 @@ import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.FrameLayout
+import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import com.phstudio.freetv.R
 
 class HTMLActivity : AppCompatActivity() {
 
     private var wvHtml: WebView? = null
-    private var link: String? = null
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_html)
 
-        val name = intent.getStringExtra("Url")
-
-        link = name
+        val link = intent.getStringExtra("Url")
 
         wvHtml = findViewById<View>(R.id.wvHtml) as WebView
         wvHtml!!.webViewClient = WebViewClient()
         wvHtml!!.webChromeClient = MyChrome()
-        val webSettings = wvHtml!!.settings
-        webSettings.javaScriptEnabled = true
-        webSettings.cacheMode
-        //webSettings.setAppCacheEnabled(true)
+        wvHtml!!.settings.apply {
+            javaScriptEnabled = true
+            mediaPlaybackRequiresUserGesture = false
+        }
+
         if (savedInstanceState == null) {
             wvHtml!!.loadUrl(link.toString())
         }
+
+        // Fix deprecated onBackPressed
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                if (wvHtml?.canGoBack() == true) {
+                    wvHtml?.goBack()
+                } else {
+                    isEnabled = false
+                    onBackPressedDispatcher.onBackPressed()
+                }
+            }
+        })
     }
 
     private inner class MyChrome : WebChromeClient() {
@@ -43,29 +54,22 @@ class HTMLActivity : AppCompatActivity() {
         private var customViewCallback: CustomViewCallback? = null
         private var originalOrientation = 0
         private var originalSystemUiVisibility = 0
-        override fun getDefaultVideoPoster(): Bitmap? {
-            return if (customView == null) {
-                null
-            } else BitmapFactory.decodeResource(applicationContext.resources, 2130837573)
-        }
+
+        override fun getDefaultVideoPoster(): Bitmap? =
+            if (customView == null) null
+            else BitmapFactory.decodeResource(applicationContext.resources, 2130837573)
 
         override fun onHideCustomView() {
             (window.decorView as FrameLayout).removeView(customView)
             customView = null
             window.decorView.systemUiVisibility = originalSystemUiVisibility
             requestedOrientation = originalOrientation
-            customViewCallback!!.onCustomViewHidden()
+            customViewCallback?.onCustomViewHidden()
             customViewCallback = null
         }
 
-        override fun onShowCustomView(
-            paramView: View,
-            paramCustomViewCallback: CustomViewCallback
-        ) {
-            if (customView != null) {
-                onHideCustomView()
-                return
-            }
+        override fun onShowCustomView(paramView: View, paramCustomViewCallback: CustomViewCallback) {
+            if (customView != null) { onHideCustomView(); return }
             customView = paramView
             originalSystemUiVisibility = window.decorView.systemUiVisibility
             originalOrientation = requestedOrientation
@@ -77,27 +81,17 @@ class HTMLActivity : AppCompatActivity() {
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
-        wvHtml!!.saveState(outState)
+        wvHtml?.saveState(outState)
     }
 
     override fun onRestoreInstanceState(savedInstanceState: Bundle) {
         super.onRestoreInstanceState(savedInstanceState)
-        wvHtml!!.restoreState(savedInstanceState)
-    }
-
-    @Deprecated("Deprecated in Java")
-    override fun onBackPressed() {
-        if (wvHtml!!.canGoBack()) {
-            wvHtml!!.goBack()
-        } else {
-            super.onBackPressed()
-        }
+        wvHtml?.restoreState(savedInstanceState)
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        wvHtml!!.stopLoading()
-        wvHtml!!.destroy()
-
+        wvHtml?.stopLoading()
+        wvHtml?.destroy()
     }
 }

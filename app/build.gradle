@@ -5,51 +5,64 @@ plugins {
 
 android {
     namespace 'com.phstudio.freetv'
-    compileSdk 34
+    compileSdk 35
 
     defaultConfig {
         applicationId "com.phstudio.freetv"
         minSdk 21
-        targetSdk 34
-        versionCode 6
-        versionName "1.5"
+        targetSdk 35
+        versionCode 7
+        versionName "1.6"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
         release {
-            minifyEnabled false
+            minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
     compileOptions {
-        sourceCompatibility "1.8"
-        targetCompatibility "1.8"
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
     }
     kotlinOptions {
-        jvmTarget = '1.8'
+        jvmTarget = '17'
     }
     viewBinding {
         enabled = true
     }
-
 }
 
 dependencies {
-    implementation 'androidx.core:core-ktx:1.13.1'
-    implementation 'androidx.appcompat:appcompat:1.7.0'
+    implementation 'androidx.core:core-ktx:1.16.0'
+    implementation 'androidx.appcompat:appcompat:1.7.1'
     implementation 'com.google.android.material:material:1.12.0'
-    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+    implementation 'androidx.constraintlayout:constraintlayout:2.2.1'
+    implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.9.0'
+
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.2.1'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.6.1'
+
     implementation 'com.intuit.sdp:sdp-android:1.1.0'
     implementation 'com.intuit.ssp:ssp-android:1.1.0'
-    //network images
-    implementation 'com.squareup.picasso:picasso:2.71828'
-    //player
-    implementation 'androidx.media3:media3-ui:1.4.0'
-    implementation 'androidx.media3:media3-exoplayer:1.4.0'
-    implementation 'androidx.media3:media3-exoplayer-hls:1.4.0'
+
+    // Networking — replaces raw Thread + HttpsURLConnection
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0'
+
+    // Image loading — replaces Picasso
+    implementation 'io.coil-kt:coil:2.7.0'
+
+    // Player
+    implementation 'androidx.media3:media3-ui:1.5.1'
+    implementation 'androidx.media3:media3-exoplayer:1.5.1'
+    implementation 'androidx.media3:media3-exoplayer-hls:1.5.1'
+
+    // Casting (Chromecast + MediaRouter)
+    implementation 'androidx.media3:media3-cast:1.5.1'
+    implementation 'com.google.android.gms:play-services-cast-framework:22.0.0'
+    implementation 'androidx.mediarouter:mediarouter:1.7.0'
 }

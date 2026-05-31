@@ -29,6 +29,8 @@ import androidx.annotation.OptIn
 import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.media3.cast.CastPlayer
+import androidx.media3.cast.SessionAvailabilityListener
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
@@ -38,11 +40,16 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.mediarouter.app.MediaRouteButton
+import com.google.android.gms.cast.framework.CastButtonFactory
+import com.google.android.gms.cast.framework.CastContext
+import com.google.android.gms.cast.framework.CastState
 import com.phstudio.freetv.R
 import com.phstudio.freetv.R.id
 import com.phstudio.freetv.R.layout
 import com.phstudio.freetv.databinding.ActivityPlayerBinding
 
+@UnstableApi
 class PlayerActivity : AppCompatActivity() {
 
     private lateinit var zoomButton: ImageButton
@@ -59,6 +66,7 @@ class PlayerActivity : AppCompatActivity() {
     private lateinit var playbackSpeedButton: ImageButton
     private lateinit var audioTrackButton: ImageButton
     private lateinit var subtitleTrackButton: ImageButton
+    private lateinit var castButton: MediaRouteButton
 
     private lateinit var gestureDetector: GestureDetector
     private lateinit var volumeProgressBar: ProgressBar
@@ -69,12 +77,16 @@ class PlayerActivity : AppCompatActivity() {
     private val brightnessHideHandler = Handler(Looper.getMainLooper())
 
     private lateinit var binding: ActivityPlayerBinding
-    private lateinit var player: ExoPlayer
+    private lateinit var localPlayer: ExoPlayer
+    private var castPlayer: CastPlayer? = null
+    private var activePlayer: Player? = null
     private var currentZoom: VideoZoom = VideoZoom.BEST_FIT
+    private var link: String? = ""
+    private var channelName: String? = ""
+    private var retryCount = 0
 
     @SuppressLint("UnsafeOptInUsageError")
     private lateinit var trackSelector: DefaultTrackSelector
-    private var link: String? = ""
 
     private val isPipSupported: Boolean by lazy {
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && packageManager.hasSystemFeature(
@@ -82,21 +94,46 @@ class PlayerActivity : AppCompatActivity() {
         )
     }
 
-    @OptIn(UnstableApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(layout.activity_player)
-
         binding = ActivityPlayerBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        player = ExoPlayer.Builder(this).build()
-        binding.playerView.player = player
+        channelName = intent.getStringExtra("Name")
+        link = intent.getStringExtra("Url")
 
-        volumeProgressBar = findViewById(id.volume_progress_bar)
-        volumeProgressText = findViewById(id.volume_progress_text)
-        brightnessProgressBar = findViewById(id.brightness_progress_bar)
-        brightnessProgressText = findViewById(id.brightness_progress_text)
+        // --- Local ExoPlayer ---
+        trackSelector = DefaultTrackSelector(this).apply {
+            setParameters(buildUponParameters().setPreferredAudioLanguage("en"))
+        }
+        localPlayer = ExoPlayer.Builder(this)
+            .setTrackSelector(trackSelector)
+            .build()
+
+        // --- Cast setup ---
+        try {
+            val castContext = CastContext.getSharedInstance(this)
+            castPlayer = CastPlayer(castContext).also { cp ->
+                cp.setSessionAvailabilityListener(object : SessionAvailabilityListener {
+                    override fun onCastSessionAvailable() = switchToPlayer(cp)
+                    override fun onCastSessionUnavailable() = switchToPlayer(localPlayer)
+                })
+            }
+            if (castPlayer?.isCastSessionAvailable == true) {
+                switchToPlayer(castPlayer!!)
+            } else {
+                switchToPlayer(localPlayer)
+            }
+        } catch (e: Exception) {
+            // Cast not available (no Play Services etc.)
+            switchToPlayer(localPlayer)
+        }
+
+        // --- UI binding ---
+        volumeProgressBar = binding.root.findViewById(id.volume_progress_bar)
+        volumeProgressText = binding.root.findViewById(id.volume_progress_text)
+        brightnessProgressBar = binding.root.findViewById(id.brightness_progress_bar)
+        brightnessProgressText = binding.root.findViewById(id.brightness_progress_text)
         setupGestureDetector()
 
         zoomButton = binding.playerView.findViewById(id.btn_video_zoom)
@@ -113,12 +150,16 @@ class PlayerActivity : AppCompatActivity() {
         playbackSpeedButton = binding.playerView.findViewById(id.btn_playback_speed)
         audioTrackButton = binding.playerView.findViewById(id.btn_audio_track)
         subtitleTrackButton = binding.playerView.findViewById(id.btn_subtitle_track)
+        castButton = binding.playerView.findViewById(id.btn_cast)
 
+        CastButtonFactory.setUpMediaRouteButton(applicationContext, castButton)
+
+        // --- System UI ---
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            val decorView = window.decorView
-            val insetsController = decorView.windowInsetsController
-            insetsController?.hide(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
-            insetsController?.systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            window.decorView.windowInsetsController?.let {
+                it.hide(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
+                it.systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            }
         } else {
             @Suppress("DEPRECATION")
             window.decorView.systemUiVisibility = (View.SYSTEM_UI_FLAG_FULLSCREEN
@@ -126,96 +167,97 @@ class PlayerActivity : AppCompatActivity() {
                     or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY)
         }
 
-        if (!isPipSupported) {
-            pipButton.visibility = View.GONE
-        }
+        if (!isPipSupported) pipButton.visibility = View.GONE
+        videoName.text = channelName
 
-        val name = intent.getStringExtra("Name")
-        videoName.text = name
-
-        link = intent.getStringExtra("Url")
-
-        player.addListener(object : Player.Listener {
-            override fun onPlayerError(error: PlaybackException) {
-                Toast.makeText(
-                    this@PlayerActivity,
-                    getString(R.string.NotStream),
-                    Toast.LENGTH_LONG
-                ).show()
-                (this@PlayerActivity as? Activity)?.finish()
-            }
-        })
-        val mediaItem = MediaItem.fromUri(link!!)
-        player.setMediaItem(mediaItem)
-        player.prepare()
-        player.play()
-
+        // --- Button listeners ---
         lockButton.setOnClickListener {
             playerUnlockControls.visibility = View.INVISIBLE
             playerLockControls.visibility = View.VISIBLE
         }
-
         unlockButton.setOnClickListener {
             playerUnlockControls.visibility = View.VISIBLE
             playerLockControls.visibility = View.INVISIBLE
         }
-
         backButton.setOnClickListener {
-            player.pause()
+            activePlayer?.pause()
             onBackPressedDispatcher.onBackPressed()
         }
-
-        playNext.setOnClickListener {
-            player.seekTo(player.currentPosition + 5000)
-        }
-
-        playPrev.setOnClickListener {
-            player.seekTo(player.currentPosition - 5000)
-        }
-
-        zoomButton.setOnClickListener {
-            toggleVideoZoom()
-        }
-
+        playNext.setOnClickListener { activePlayer?.seekTo((activePlayer?.currentPosition ?: 0) + 5000) }
+        playPrev.setOnClickListener { activePlayer?.seekTo(((activePlayer?.currentPosition ?: 0) - 5000).coerceAtLeast(0)) }
+        zoomButton.setOnClickListener { toggleVideoZoom() }
         pipButton.setOnClickListener {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && isPipSupported) {
-                this.enterPictureInPictureMode(updatePictureInPictureParams())
+                enterPictureInPictureMode(updatePictureInPictureParams())
             }
         }
-
         screenRotateButton.setOnClickListener {
             requestedOrientation = when (resources.configuration.orientation) {
                 Configuration.ORIENTATION_LANDSCAPE -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
                 else -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
             }
         }
-
         playbackSpeedButton.setOnClickListener {
             PlaybackSpeedControlsDialogFragment(
-                currentSpeed = player.playbackParameters.speed,
-                onChange = {
-                    player.setPlaybackSpeed(it)
-                },
+                currentSpeed = localPlayer.playbackParameters.speed,
+                onChange = { localPlayer.setPlaybackSpeed(it) },
             ).show(supportFragmentManager, "PlaybackSpeedSelectionDialog")
         }
-
-        initializeTrackSelector()
-
         audioTrackButton.setOnClickListener {
             TrackSelectionDialogFragment(
                 type = C.TRACK_TYPE_AUDIO,
-                tracks = player.currentTracks,
-                onTrackSelected = { player.switchTrack(C.TRACK_TYPE_AUDIO, it) },
+                tracks = localPlayer.currentTracks,
+                onTrackSelected = { localPlayer.switchTrack(C.TRACK_TYPE_AUDIO, it) },
             ).show(supportFragmentManager, "TrackSelectionDialog")
         }
-
         subtitleTrackButton.setOnClickListener {
             TrackSelectionDialogFragment(
                 type = C.TRACK_TYPE_TEXT,
-                tracks = player.currentTracks,
-                onTrackSelected = { player.switchTrack(C.TRACK_TYPE_TEXT, it) },
+                tracks = localPlayer.currentTracks,
+                onTrackSelected = { localPlayer.switchTrack(C.TRACK_TYPE_TEXT, it) },
             ).show(supportFragmentManager, "TrackSelectionDialog")
         }
+    }
+
+    private fun switchToPlayer(player: Player) {
+        val previousPlayer = activePlayer
+        if (previousPlayer == player) return
+
+        val position = previousPlayer?.currentPosition ?: 0L
+        previousPlayer?.stop()
+
+        activePlayer = player
+        binding.playerView.player = player
+
+        val mediaItem = MediaItem.fromUri(link!!)
+        player.setMediaItem(mediaItem)
+        player.seekTo(position)
+        player.prepare()
+        player.play()
+
+        player.addListener(object : Player.Listener {
+            override fun onPlayerError(error: PlaybackException) {
+                if (retryCount < 3) {
+                    retryCount++
+                    Handler(Looper.getMainLooper()).postDelayed({
+                        player.prepare()
+                        player.play()
+                    }, 1500L * retryCount)
+                } else {
+                    retryCount = 0
+                    Toast.makeText(
+                        this@PlayerActivity,
+                        getString(R.string.NotStream),
+                        Toast.LENGTH_LONG
+                    ).show()
+                    (this@PlayerActivity as? Activity)?.finish()
+                }
+            }
+
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_READY) retryCount = 0
+            }
+        })
     }
 
     private val subtitleFileLauncher = registerForActivityResult(OpenDocument()) { uri ->
@@ -224,40 +266,17 @@ class PlayerActivity : AppCompatActivity() {
         }
     }
 
-    @OptIn(UnstableApi::class)
-    private fun initializeTrackSelector() {
-        trackSelector = DefaultTrackSelector(this).apply {
-            setParameters(buildUponParameters().setPreferredAudioLanguage("en"))
-        }
-    }
-
     private fun Player.switchTrack(trackType: @C.TrackType Int, trackIndex: Int?) {
         if (trackIndex == null) return
-        when (trackType) {
-            C.TRACK_TYPE_AUDIO -> "audio"
-            C.TRACK_TYPE_TEXT -> "subtitle"
-            else -> throw IllegalArgumentException("Invalid track type: $trackType")
-        }
-
         if (trackIndex < 0) {
-            trackSelectionParameters = trackSelectionParameters
-                .buildUpon()
-                .setTrackTypeDisabled(trackType, true)
-                .build()
+            trackSelectionParameters = trackSelectionParameters.buildUpon()
+                .setTrackTypeDisabled(trackType, true).build()
         } else {
             val tracks = currentTracks.groups.filter { it.type == trackType }
-
-            if (tracks.isEmpty() || trackIndex >= tracks.size) {
-                return
-            }
-
-            val trackSelectionOverride =
-                TrackSelectionOverride(tracks[trackIndex].mediaTrackGroup, 0)
-
-            trackSelectionParameters = trackSelectionParameters
-                .buildUpon()
+            if (tracks.isEmpty() || trackIndex >= tracks.size) return
+            trackSelectionParameters = trackSelectionParameters.buildUpon()
                 .setTrackTypeDisabled(trackType, false)
-                .setOverrideForType(trackSelectionOverride)
+                .setOverrideForType(TrackSelectionOverride(tracks[trackIndex].mediaTrackGroup, 0))
                 .build()
         }
     }
@@ -272,95 +291,41 @@ class PlayerActivity : AppCompatActivity() {
         applyVideoZoom(currentZoom)
     }
 
-    @OptIn(UnstableApi::class)
     private fun applyVideoZoom(zoom: VideoZoom) {
-        when (zoom) {
-            VideoZoom.BEST_FIT -> {
-                binding.playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                zoomButton.setImageDrawable(
-                    ContextCompat.getDrawable(
-                        this@PlayerActivity,
-                        R.drawable.ic_fit_screen
-                    )
-                )
-            }
-
-            VideoZoom.STRETCH -> {
-                binding.playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FILL
-                zoomButton.setImageDrawable(
-                    ContextCompat.getDrawable(
-                        this@PlayerActivity,
-                        R.drawable.ic_aspect_ratio
-                    )
-                )
-            }
-
-            VideoZoom.CROP -> {
-                binding.playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-                zoomButton.setImageDrawable(
-                    ContextCompat.getDrawable(
-                        this@PlayerActivity,
-                        R.drawable.ic_crop_landscape
-                    )
-                )
-
-            }
-
-            VideoZoom.HUNDRED_PERCENT -> {
-                binding.playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIXED_WIDTH
-                zoomButton.setImageDrawable(
-                    ContextCompat.getDrawable(
-                        this@PlayerActivity,
-                        R.drawable.ic_width_wide
-                    )
-                )
-
-            }
+        val (mode, icon) = when (zoom) {
+            VideoZoom.BEST_FIT -> AspectRatioFrameLayout.RESIZE_MODE_FIT to R.drawable.ic_fit_screen
+            VideoZoom.STRETCH -> AspectRatioFrameLayout.RESIZE_MODE_FILL to R.drawable.ic_aspect_ratio
+            VideoZoom.CROP -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM to R.drawable.ic_crop_landscape
+            VideoZoom.HUNDRED_PERCENT -> AspectRatioFrameLayout.RESIZE_MODE_FIXED_WIDTH to R.drawable.ic_width_wide
         }
+        binding.playerView.resizeMode = mode
+        zoomButton.setImageDrawable(ContextCompat.getDrawable(this, icon))
     }
 
     @SuppressLint("ClickableViewAccessibility")
     private fun setupGestureDetector() {
         gestureDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
-            override fun onScroll(
-                e1: MotionEvent?,
-                e2: MotionEvent,
-                distanceX: Float,
-                distanceY: Float
-            ): Boolean {
+            override fun onScroll(e1: MotionEvent?, e2: MotionEvent, distanceX: Float, distanceY: Float): Boolean {
                 e1?.let {
                     if (playerLockControls.visibility != View.VISIBLE) {
-                        val screenWidth = resources.displayMetrics.widthPixels
-                        if (e1.x < screenWidth / 2) {
-                            adjustBrightness(-distanceY)
-                        } else {
-                            adjustVolume(-distanceY)
-                        }
+                        val half = resources.displayMetrics.widthPixels / 2
+                        if (e1.x < half) adjustBrightness(-distanceY) else adjustVolume(-distanceY)
                     }
                 }
                 return true
             }
 
             override fun onDoubleTap(e: MotionEvent): Boolean {
-                if (player.isPlaying) {
-                    player.pause()
-                } else {
-                    player.play()
-                }
+                if (activePlayer?.isPlaying == true) activePlayer?.pause() else activePlayer?.play()
                 return true
             }
 
-            @UnstableApi
             override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
-                if (binding.playerView.isControllerFullyVisible) {
-                    binding.playerView.hideController()
-                } else {
-                    binding.playerView.showController()
-                }
+                if (binding.playerView.isControllerFullyVisible) binding.playerView.hideController()
+                else binding.playerView.showController()
                 return super.onSingleTapConfirmed(e)
             }
         })
-
         binding.playerView.setOnTouchListener { _, event ->
             gestureDetector.onTouchEvent(event)
             true
@@ -368,82 +333,63 @@ class PlayerActivity : AppCompatActivity() {
     }
 
     private fun adjustVolume(distanceY: Float) {
-        val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        val currentVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
-        val maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-
-        val volumeChange = (distanceY * 0.05f).toInt()
-        val newVolume = (currentVolume - volumeChange).coerceIn(0, maxVolume)
-        audioManager.setStreamVolume(
-            AudioManager.STREAM_MUSIC,
-            newVolume,
-            AudioManager.FLAG_SHOW_UI
-        )
-
+        val am = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        val cur = am.getStreamVolume(AudioManager.STREAM_MUSIC)
+        val max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+        val new = (cur - (distanceY * 0.05f).toInt()).coerceIn(0, max)
+        am.setStreamVolume(AudioManager.STREAM_MUSIC, new, AudioManager.FLAG_SHOW_UI)
         updateVolumeUI()
     }
 
     private fun adjustBrightness(distanceY: Float) {
-        val layoutParams = window.attributes
-        val currentBrightness = layoutParams.screenBrightness
-
-        val brightnessChange = (distanceY * 0.002f)
-        val newBrightness = (currentBrightness - brightnessChange).coerceIn(0.0f, 1.0f)
-        layoutParams.screenBrightness = newBrightness
-        window.attributes = layoutParams
-
+        val lp = window.attributes
+        lp.screenBrightness = (lp.screenBrightness - distanceY * 0.002f).coerceIn(0f, 1f)
+        window.attributes = lp
         updateBrightnessUI()
     }
 
     @SuppressLint("SetTextI18n")
     private fun updateVolumeUI() {
-        val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        val currentVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
-        val maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-        val volumePercentage = (currentVolume.toFloat() / maxVolume * 100).toInt()
-
+        val am = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        val pct = (am.getStreamVolume(AudioManager.STREAM_MUSIC).toFloat() /
+                am.getStreamMaxVolume(AudioManager.STREAM_MUSIC) * 100).toInt()
         binding.volumeGestureLayout.visibility = View.VISIBLE
-        volumeProgressText.text = "$volumePercentage%"
-        volumeProgressBar.progress = volumePercentage
+        volumeProgressText.text = "$pct%"
+        volumeProgressBar.progress = pct
         volumeHideHandler.removeCallbacksAndMessages(null)
-        volumeHideHandler.postDelayed({
-            binding.volumeGestureLayout.visibility = View.GONE
-        }, 2000)
+        volumeHideHandler.postDelayed({ binding.volumeGestureLayout.visibility = View.GONE }, 2000)
     }
 
     @SuppressLint("SetTextI18n")
     private fun updateBrightnessUI() {
-        val brightnessLevel = (window.attributes.screenBrightness * 100).toInt()
-
+        val level = (window.attributes.screenBrightness * 100).toInt()
         binding.brightnessGestureLayout.visibility = View.VISIBLE
-        brightnessProgressText.text = "$brightnessLevel%"
-        brightnessProgressBar.progress = brightnessLevel
+        brightnessProgressText.text = "$level%"
+        brightnessProgressBar.progress = level
         brightnessHideHandler.removeCallbacksAndMessages(null)
-        brightnessHideHandler.postDelayed({
-            binding.brightnessGestureLayout.visibility = View.GONE
-        }, 2000)
+        brightnessHideHandler.postDelayed({ binding.brightnessGestureLayout.visibility = View.GONE }, 2000)
     }
 
     @RequiresApi(Build.VERSION_CODES.O)
-    private fun updatePictureInPictureParams(): PictureInPictureParams {
-        val params: PictureInPictureParams = PictureInPictureParams.Builder()
-            .setAspectRatio(Rational(16, 9))
-            .build()
+    private fun updatePictureInPictureParams(): PictureInPictureParams =
+        PictureInPictureParams.Builder().setAspectRatio(Rational(16, 9)).build().also {
+            setPictureInPictureParams(it)
+        }
 
-        setPictureInPictureParams(params)
-        return params
-    }
-
-    override fun onPictureInPictureModeChanged(
-        isInPictureInPictureMode: Boolean,
-        newConfig: Configuration
-    ) {
+    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: Configuration) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
         binding.playerView.useController = !isInPictureInPictureMode
     }
 
+    override fun onStop() {
+        super.onStop()
+        if (!isInPictureInPictureMode) activePlayer?.pause()
+    }
+
     override fun onDestroy() {
         super.onDestroy()
-        player.release()
+        localPlayer.release()
+        castPlayer?.setSessionAvailabilityListener(null)
+        castPlayer?.release()
     }
 }
