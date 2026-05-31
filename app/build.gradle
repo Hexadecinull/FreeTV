@@ -33,6 +33,15 @@ android {
     viewBinding {
         enabled = true
     }
+    lint {
+        // Known crash: AGP 8.x bundled lint + Kotlin 2.0 analysis API incompatibility
+        // https://issuetracker.google.com/issues/328415540
+        disable 'NullSafeMutableLiveData'
+        warningsAsErrors false
+        abortOnError true
+        htmlReport true
+        htmlOutput file("build/reports/lint-results.html")
+    }
 }
 
 dependencies {
@@ -49,11 +58,11 @@ dependencies {
     implementation 'com.intuit.sdp:sdp-android:1.1.0'
     implementation 'com.intuit.ssp:ssp-android:1.1.0'
 
-    // Networking — replaces raw Thread + HttpsURLConnection
+    // Networking
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0'
 
-    // Image loading — replaces Picasso
+    // Image loading
     implementation 'io.coil-kt:coil:2.7.0'
 
     // Player
@@ -61,7 +70,7 @@ dependencies {
     implementation 'androidx.media3:media3-exoplayer:1.5.1'
     implementation 'androidx.media3:media3-exoplayer-hls:1.5.1'
 
-    // Casting (Chromecast + MediaRouter)
+    // Casting
     implementation 'androidx.media3:media3-cast:1.5.1'
     implementation 'com.google.android.gms:play-services-cast-framework:22.0.0'
     implementation 'androidx.mediarouter:mediarouter:1.7.0'

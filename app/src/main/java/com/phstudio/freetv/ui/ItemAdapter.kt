@@ -11,20 +11,7 @@ internal class ItemAdapter(
     private var itemList: ArrayList<Triple<String, Int, String>>,
     private val listener: OnItemClickListener,
     private val longClickListener: OnItemLongClickListener
-) :
-    RecyclerView.Adapter<ItemAdapter.MyViewHolder>() {
-    private fun splitList(newsList: ArrayList<Triple<String, Int, String>>): Triple<ArrayList<String>, ArrayList<Int>, ArrayList<String>> {
-        val stringList1 = ArrayList<String>()
-        val intList = ArrayList<Int>()
-        val stringList2 = ArrayList<String>()
-
-        for (pair in newsList) {
-            stringList1.add(pair.first)
-            intList.add(pair.second)
-            stringList2.add(pair.third)
-        }
-        return Triple(stringList1, intList, stringList2)
-    }
+) : RecyclerView.Adapter<ItemAdapter.MyViewHolder>() {
 
     interface OnItemClickListener {
         fun onItemClick(position: Int)
@@ -35,49 +22,46 @@ internal class ItemAdapter(
     }
 
     internal inner class MyViewHolder(view: View) : RecyclerView.ViewHolder(view) {
-        var btItem: Button = view.findViewById(R.id.btItem)
+        val btItem: Button = view.findViewById(R.id.btItem)
 
         init {
             btItem.setOnClickListener {
-                listener.onItemClick(adapterPosition)
+                val pos = bindingAdapterPosition
+                if (pos != RecyclerView.NO_ID.toInt()) listener.onItemClick(pos)
             }
-        }
-
-        init {
             btItem.setOnLongClickListener {
-                longClickListener.onItemLongClick(position)
+                val pos = bindingAdapterPosition
+                if (pos != RecyclerView.NO_ID.toInt()) longClickListener.onItemLongClick(pos)
+                true
+            }
+            itemView.setOnClickListener {
+                val pos = bindingAdapterPosition
+                if (pos != RecyclerView.NO_ID.toInt()) listener.onItemClick(pos)
+            }
+            itemView.setOnLongClickListener {
+                val pos = bindingAdapterPosition
+                if (pos != RecyclerView.NO_ID.toInt()) longClickListener.onItemLongClick(pos)
                 true
             }
         }
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): MyViewHolder {
-        val itemView = LayoutInflater.from(parent.context)
-            .inflate(R.layout.item_button, parent, false)
-        return MyViewHolder(itemView)
+        val view = LayoutInflater.from(parent.context).inflate(R.layout.item_button, parent, false)
+        return MyViewHolder(view)
     }
 
     override fun onBindViewHolder(holder: MyViewHolder, position: Int) {
-        holder.itemView.setOnClickListener {
-            listener.onItemClick(position)
-        }
-
-        holder.itemView.setOnLongClickListener {
-            longClickListener.onItemLongClick(position)
-        }
-        val (stringList1, intList, _) = splitList(itemList)
-
-        val text = stringList1[position]
-        val icon = intList[position]
-        holder.btItem.text = text
+        val (names, icons, _) = Triple(
+            itemList.map { it.first },
+            itemList.map { it.second },
+            itemList.map { it.third }
+        )
+        holder.btItem.text = names[position]
         holder.btItem.isFocusable = true
         holder.btItem.isClickable = true
-
-        holder.btItem.setCompoundDrawablesWithIntrinsicBounds(icon, 0, 0, 0)
-
+        holder.btItem.setCompoundDrawablesWithIntrinsicBounds(icons[position], 0, 0, 0)
     }
 
-    override fun getItemCount(): Int {
-        return itemList.size
-    }
+    override fun getItemCount(): Int = itemList.size
 }

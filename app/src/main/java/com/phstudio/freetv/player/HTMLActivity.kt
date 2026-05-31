@@ -3,8 +3,11 @@ package com.phstudio.freetv.player
 import android.annotation.SuppressLint
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.os.Build
 import android.os.Bundle
 import android.view.View
+import android.view.WindowInsets
+import android.view.WindowInsetsController
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -62,7 +65,12 @@ class HTMLActivity : AppCompatActivity() {
         override fun onHideCustomView() {
             (window.decorView as FrameLayout).removeView(customView)
             customView = null
-            window.decorView.systemUiVisibility = originalSystemUiVisibility
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                window.insetsController?.show(WindowInsets.Type.systemBars())
+            } else {
+                @Suppress("DEPRECATION")
+                window.decorView.systemUiVisibility = originalSystemUiVisibility
+            }
             requestedOrientation = originalOrientation
             customViewCallback?.onCustomViewHidden()
             customViewCallback = null
@@ -71,11 +79,24 @@ class HTMLActivity : AppCompatActivity() {
         override fun onShowCustomView(paramView: View, paramCustomViewCallback: CustomViewCallback) {
             if (customView != null) { onHideCustomView(); return }
             customView = paramView
-            originalSystemUiVisibility = window.decorView.systemUiVisibility
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                originalSystemUiVisibility = 0
+                window.insetsController?.let {
+                    it.hide(WindowInsets.Type.systemBars())
+                    it.systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                }
+            } else {
+                @Suppress("DEPRECATION")
+                originalSystemUiVisibility = window.decorView.systemUiVisibility
+                @Suppress("DEPRECATION")
+                window.decorView.systemUiVisibility = (View.SYSTEM_UI_FLAG_FULLSCREEN
+                        or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                        or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                        or View.SYSTEM_UI_FLAG_LAYOUT_STABLE)
+            }
             originalOrientation = requestedOrientation
             customViewCallback = paramCustomViewCallback
             (window.decorView as FrameLayout).addView(customView, FrameLayout.LayoutParams(-1, -1))
-            window.decorView.systemUiVisibility = 3846 or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
         }
     }
 

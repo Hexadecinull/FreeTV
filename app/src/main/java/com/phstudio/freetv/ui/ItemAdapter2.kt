@@ -32,10 +32,24 @@ internal class ItemAdapter2(
         val btItem: Button = view.findViewById(R.id.btItem)
 
         init {
-            btItem.setOnClickListener { listener.onItemClick(adapterPosition) }
-            btItem.setOnLongClickListener { longClickListener.onItemLongClick(adapterPosition) }
-            itemView.setOnClickListener { listener.onItemClick(adapterPosition) }
-            itemView.setOnLongClickListener { longClickListener.onItemLongClick(adapterPosition) }
+            btItem.setOnClickListener {
+                val pos = bindingAdapterPosition
+                if (pos != RecyclerView.NO_ID.toInt()) listener.onItemClick(pos)
+            }
+            btItem.setOnLongClickListener {
+                val pos = bindingAdapterPosition
+                if (pos != RecyclerView.NO_ID.toInt()) longClickListener.onItemLongClick(pos)
+                true
+            }
+            itemView.setOnClickListener {
+                val pos = bindingAdapterPosition
+                if (pos != RecyclerView.NO_ID.toInt()) listener.onItemClick(pos)
+            }
+            itemView.setOnLongClickListener {
+                val pos = bindingAdapterPosition
+                if (pos != RecyclerView.NO_ID.toInt()) longClickListener.onItemLongClick(pos)
+                true
+            }
         }
     }
 
