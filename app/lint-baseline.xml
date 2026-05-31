@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Lint baseline — captures pre-existing issues from the original codebase
+    so CI only fails on NEW lint errors introduced going forward.
+
+    To regenerate: ./gradlew updateLintBaseline
+-->
+<issues format="6" by="lint 8.7.0" type="baseline" client="gradle" dependencies="false" name="app" variant="all" version="8.7.0">
+
+</issues>

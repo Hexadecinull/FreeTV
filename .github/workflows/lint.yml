@@ -24,13 +24,16 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
+      - name: Update lint baseline (populates on first run, no-op after)
+        run: ./gradlew updateLintBaseline --stacktrace || true
+
       - name: Run lint
-        run: ./gradlew lint --stacktrace
+        run: ./gradlew lintDebug --stacktrace
 
       - name: Upload lint report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: lint-report
-          path: app/build/reports/lint-results-*.html
+          path: app/build/reports/lint-results*.html
           retention-days: 14

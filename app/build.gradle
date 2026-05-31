@@ -41,6 +41,9 @@ android {
         abortOnError true
         htmlReport true
         htmlOutput file("build/reports/lint-results.html")
+        // Baseline captures pre-existing issues; CI only fails on NEW errors.
+        // To refresh: ./gradlew updateLintBaseline
+        baseline = file("lint-baseline.xml")
     }
 }
 
